@@ -36,7 +36,7 @@ const ConnectedMap = ({
 }) => {
   const [lng, setLng] = useState(-118.2);
   const [lat, setLat] = useState(34.05);
-  const [zoom, setZoom] = useState(15);
+  const [zoom, setZoom] = useState(10);
   const [data, setData] = useState([]);
   const [map, setMap] = useState(null);
   const [mounted, setMounted] = useState(false);
@@ -51,138 +51,146 @@ const ConnectedMap = ({
   );
 
   useEffect(() => {
-    setMap(
-      new mapboxgl.Map({
-        container: mapContainer.current,
-        style: "mapbox://styles/mapbox/streets-v11",
-        center: [lng, lat],
-        zoom: zoom,
-      })
-    );
-
-    setMounted(true);
+    // TO MAKE THE MAP APPEAR YOU MUST
+	// ADD YOUR ACCESS TOKEN FROM
+	// https://account.mapbox.com
+	mapboxgl.accessToken = process.env.REACT_APP_MAP_BOX_TOKEN;
+  var map = new mapboxgl.Map({
+  container: mapContainer.current,
+  style: 'mapbox://styles/mapbox/dark-v10',
+  center: [-103.59179687498357, 40.66995747013945],
+  zoom: 3
+  });
+   
+  map.on('load', function() {
+  // Add a new source from our GeoJSON data and
+  // set the 'cluster' option to true. GL-JS will
+  // add the point_count property to your source data.
+  map.addSource('earthquakes', {
+  type: 'geojson',
+  // Point to GeoJSON data. This example visualizes all M1.0+ earthquakes
+  // from 12/22/15 to 1/21/16 as logged by USGS' Earthquake hazards program.
+  data: `https://raw.githubusercontent.com/hackforla/lucky-parking/master/aws/sample_data.geojson`,
+  cluster: true,
+  clusterMaxZoom: 14, // Max zoom to cluster points on
+  clusterRadius: 50 // Radius of each cluster when clustering points (defaults to 50)
+  });
+   
+  map.addLayer({
+  id: 'clusters',
+  type: 'circle',
+  source: 'earthquakes',
+  filter: ['has', 'point_count'],
+  paint: {
+  // Use step expressions (https://docs.mapbox.com/mapbox-gl-js/style-spec/#expressions-step)
+  // with three steps to implement three types of circles:
+  //   * Blue, 20px circles when point count is less than 100
+  //   * Yellow, 30px circles when point count is between 100 and 750
+  //   * Pink, 40px circles when point count is greater than or equal to 750
+  'circle-color': [
+  'step',
+  ['get', 'point_count'],
+  '#51bbd6',
+  100,
+  '#f1f075',
+  750,
+  '#f28cb1'
+  ],
+  'circle-radius': [
+  'step',
+  ['get', 'point_count'],
+  20,
+  100,
+  30,
+  750,
+  40
+  ]
+  }
+  });
+   
+  map.addLayer({
+  id: 'cluster-count',
+  type: 'symbol',
+  source: 'earthquakes',
+  filter: ['has', 'point_count'],
+  layout: {
+  'text-field': '{point_count_abbreviated}',
+  'text-font': ['DIN Offc Pro Medium', 'Arial Unicode MS Bold'],
+  'text-size': 12
+  }
+  });
+   
+  map.addLayer({
+  id: 'unclustered-point',
+  type: 'circle',
+  source: 'earthquakes',
+  filter: ['!', ['has', 'point_count']],
+  paint: {
+  'circle-color': '#11b4da',
+  'circle-radius': 4,
+  'circle-stroke-width': 1,
+  'circle-stroke-color': '#fff'
+  }
+  });
+   
+  // inspect a cluster on click
+  map.on('click', 'clusters', function(e) {
+  var features = map.queryRenderedFeatures(e.point, {
+  layers: ['clusters']
+  });
+  var clusterId = features[0].properties.cluster_id;
+  map.getSource('earthquakes').getClusterExpansionZoom(
+  clusterId,
+  function(err, zoom) {
+  if (err) return;
+   
+  map.easeTo({
+  center: features[0].geometry.coordinates,
+  zoom: zoom
+  });
+  }
+  );
+  });
+   
+  // When a click event occurs on a feature in
+  // the unclustered-point layer, open a popup at
+  // the location of the feature, with
+  // description HTML from its properties.
+  map.on('click', 'unclustered-point', function(e) {
+  var coordinates = e.features[0].geometry.coordinates.slice();
+  var mag = e.features[0].properties.mag;
+  var tsunami;
+   
+  if (e.features[0].properties.tsunami === 1) {
+  tsunami = 'yes';
+  } else {
+  tsunami = 'no';
+  }
+   
+  // Ensure that if the map is zoomed out such that
+  // multiple copies of the feature are visible, the
+  // popup appears over the copy being pointed to.
+  while (Math.abs(e.lngLat.lng - coordinates[0]) > 180) {
+  coordinates[0] += e.lngLat.lng > coordinates[0] ? 360 : -360;
+  }
+   
+  new mapboxgl.Popup()
+  .setLngLat(coordinates)
+  .setHTML(
+  'magnitude: ' + mag + '<br>Was there a tsunami?: ' + tsunami
+  )
+  .addTo(map);
+  });
+   
+  map.on('mouseenter', 'clusters', function() {
+  map.getCanvas().style.cursor = 'pointer';
+  });
+  map.on('mouseleave', 'clusters', function() {
+  map.getCanvas().style.cursor = '';
+  });
+  });
   }, []);
 
-  useEffect(() => {
-    if (mounted) {
-      map.on("move", () => {
-        setLng(map.getCenter().lng.toFixed(4));
-        setLat(map.getCenter().lat.toFixed(4));
-        setZoom(map.getZoom().toFixed(2));
-      });
-
-      const geocoder = new MapboxGeocoder({
-        accessToken: mapboxgl.accessToken,
-        mapboxgl: mapboxgl,
-      });
-
-      mapRef.current.appendChild(geocoder.onAdd(map));
-    }
-  }, [mounted]);
-
-  useEffect(() => {
-    // The map triggers the http requests when the zoom level is bigger than or equal to 16
-    if (zoom >= 16) {
-      // The map updates the data points rendering on the map as the user changes location
-      axios
-        .get("/api/citation", {
-          params: {
-            longitude: lng,
-            latitude: lat,
-          },
-        })
-        .then((data) => {
-          setData(data.data);
-        })
-        .catch((error) => {
-          console.log(error);
-        });
-
-      let dataSources = {
-        type: "geojson",
-        data: {
-          type: "FeatureCollection",
-          features: [],
-        },
-      };
-
-      let dataFeatures = [];
-      data.map((data) =>
-        dataFeatures.push({
-          type: "Feature",
-          properties: {
-            description: data,
-            icon: "bicycle",
-          },
-          geometry: {
-            type: "Point",
-            coordinates: [JSON.parse(data.long), JSON.parse(data.lat)],
-          },
-        })
-      );
-
-      dataSources.data.features = dataFeatures;
-
-      map.once("render", () => {
-        const places = {
-          id: "places",
-          type: "symbol",
-          source: "places",
-          layout: {
-            "icon-image": "{icon}-15",
-            "icon-allow-overlap": true,
-          },
-        };
-        const meters = {
-          'id': 'meter',
-            'source': 'meter',
-            'type': 'line',
-            'source-layer': 'meter_lines-1l60am',
-            'paint': {
-              'line-color': '#e50cff',
-              'line-width': 2
-            }
-        };
-        if (!map.getSource("places") && !map.getSource('meter')) {
-          map.addSource("places", dataSources);
-          map.addSource('meter', {
-            type: 'vector',
-            url: 'mapbox://breeze094.bqlt7yn4'
-            });
-          map.addLayer(meters)
-          map.addLayer(places);
-        } else {
-          map.removeLayer("places");
-          map.removeSource("places");
-
-          map.addSource("places", dataSources);
-          map.addLayer(places);
-        }
-
-        map.on("click", "places", (e) => {
-          let description = e.features[0].properties.description;
-          handleSidebar(false);
-          closeButtonHandle[0].classList.add("--show");
-          sideBar[0].classList.add("--container-open");
-          closeButton[0].classList.remove("--closeButton-close");
-          getCitationData(description);
-        });
-      });
-    }
-    if (mounted) {
-      // The map removes the points on the map when the zoom level is less than 16
-      if (map.getSource("places") && zoom < 16) {
-        map.removeLayer("places");
-        map.removeSource("places");
-        map.removeLayer('meter');
-        map.removeSource('meter')
-        handleSidebar(true);
-        sideBar[0].classList.remove("--container-open");
-        closeButton[0].classList.add("--closeButton-close");
-        setData([]);
-      }
-    }
-  }, [lat, lng, zoom]);
   return (
     <div className="map-container">
       <div ref={mapContainer} className="mapContainer" />

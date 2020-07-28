@@ -4,7 +4,7 @@ require("dotenv").config();
 module.exports = pgClient = new Client({
   host: process.env.DB_HOST,
   user: process.env.DB_USER,
-  password: process.env.DB_PASSWORD,
+  password: process.env.DB_PW,
   database: process.env.DB_DATABASE,
   port: process.env.DB_PORT,
 });
