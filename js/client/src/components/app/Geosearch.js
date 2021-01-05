@@ -27,6 +27,15 @@ const ConnectGeosearch = ({ map, getMap }) => {
 
   getMap(searchContainer);
 
+  // useEffect(() => {
+  //   map.setFilter('places',
+  //    [
+  //      'all',
+  //      [">=", ['get', 'startDate'], startDate],
+  //      ["<=", ['get', 'endDate'], endDate]
+  //    ])
+  // }, [startDate, endDate])
+
   return (
     <div className="geosearch">
       <div className="geosearch__main">
@@ -35,9 +44,7 @@ const ConnectGeosearch = ({ map, getMap }) => {
           <label>From :</label>
           <DatePicker
             selected={startDate}
-            onChange={(e) => {
-              setStartDate(e);
-            }}
+            onChange={(date) => {setStartDate(date);}}
           />
           <select
             className="geosearch__main-time-select"
@@ -97,9 +104,7 @@ const ConnectGeosearch = ({ map, getMap }) => {
           <label>To :</label>
           <DatePicker
             selected={endDate}
-            onChange={(e) => {
-              setEndDate(e);
-            }}
+            onChange={(date) => {setEndDate(date);}}
           />
           <select className="geosearch__main-time-select">
             <option>12:00 AM</option>
